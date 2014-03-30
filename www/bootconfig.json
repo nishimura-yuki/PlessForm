@@ -1,0 +1,10 @@
+{
+    "remoteAccessConsumerKey": "3MVG9I1kFE5Iul2B.3PWFd0tN6MLOScoSHcTFXK4LfTOTEB_yxCYRmhDEsDuQsADQCXHUcfxYGZIfDCXjOHCe",
+    "oauthRedirectURI": "PlessFormG:///mobilesdk/detect/oauth/done",
+    "oauthScopes": ["web","api"],
+    "isLocal": true,
+    "startPage": "index.html",
+    "errorPage": "error.html",
+    "shouldAuthenticate": true,
+    "attemptOfflineLoad": false
+}

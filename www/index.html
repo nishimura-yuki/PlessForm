@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html>
+	<head>
+    ￼	<meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    	<meta http-equiv="Content-type" content="text/html; charset=utf-8"/>
+
+        <!-- css -->
+        <link rel="stylesheet" href="jquery/jquery.mobile-1.3.2.min.css"/>
+    	<link rel="stylesheet" href="css/style.css"/>
+    	<link rel="stylesheet" type="text/css" href="jquery/plugins/spectrum/spectrum.css">
+
+        <!-- js -->
+        <script src="jquery/jquery-1.9.1.min.js"></script>
+    	<script>
+            $(document).on('mobileinit', function() {
+				$.mobile.loader.prototype.options.theme = 'c';
+				$.mobile.loader.prototype.options.html = 
+  					'<div style="position:fixed; z-index:99998; left:0px; top:0px;'+
+  					' width:100%;height:100%; background-color:#000;">' + 
+  					'</div>' +
+  					'<img src="jquery/images/ajax-loader.gif" ' +
+  					  'style="position:fixed; z-index:99999; left:50%; top:50%; margin:-23px 0 0 -23px;" '+
+  					 ' />';
+				$.event.special.tap.tapholdThreshold = 1000;
+  			});
+		</script>
+        <script src="jquery/jquery.mobile-1.3.2.min.js"></script>
+        <script type="text/javascript" src="jquery/plugins/spectrum/spectrum.js"></script>
+        
+        <script src="backbone/underscore-1.4.4.min.js"></script>
+        <script src="backbone/backbone-1.0.0.min.js"></script>
+        <script src="cordova-2.3.0.js"></script>
+        <script src="cordova.force.js"></script>
+        <script src="forcetk.mobilesdk.js"></script>
+
+		<script src="js/Utility.js"></script>
+		<script src="js/FileManager.js"></script>
+		<script src="js/StorageManager.js"></script>
+		<script src="js/SalesforceFieldDefine.js"></script>
+		<script src="js/SalesforceSObjectConverter.js"></script>
+		
+		<script src="js/data/AppData.js"></script>
+		<script src="js/model/Model.js"></script>
+		<script src="js/view/View.js"></script>
+        <script src="js/page/TopPage.js"></script>
+		<script src="js/page/AddFormPage.js"></script>
+		<script src="js/page/MainFormPage.js"></script>
+		<script src="js/page/InputSettingPage.js"></script>
+		<script src="js/page/FinishSettingPage.js"></script>
+		
+    	<script>
+    
+	    	// The version of the REST API you wish to use in your app.
+	    	var apiVersion = "v28.0";
+			
+	    	var forcetkClient;
+	    	var debugMode = true;
+	    	var logToConsole = cordova.require("salesforce/util/logger").logToConsole;
+	    	
+	        var app = {
+	           models: {},
+	           views: {} ,
+	           pages: {} ,
+	           datas: {}
+	        };
+	    	
+		    jQuery(document).ready(function() {
+		        //Add event listeners and so forth here
+		        document.addEventListener("deviceready", onDeviceReady,false);
+		    });
+		
+		    // When this function is called, Cordova has been initialized and is ready to roll 
+		    function onDeviceReady() {
+		        logToConsole("onDeviceReady: Cordova ready");
+				
+		        //Call getAuthCredentials to get the initial session credentials
+		        cordova.require("salesforce/plugin/oauth").getAuthCredentials(salesforceSessionRefreshed, getAuthCredentialsError);
+		
+		        //register to receive notifications when autoRefreshOnForeground refreshes the sfdc session
+		        document.addEventListener("salesforceSessionRefresh",salesforceSessionRefreshed,false);
+		
+		        //enable buttons
+		        regLinkClickHandlers();
+		    }
+
+		    function salesforceSessionRefreshed(creds) {
+		        logToConsole("salesforceSessionRefreshed");
+		        
+		        // Depending on how we come into this method, `creds` may be callback data from the auth
+		        // plugin, or an event fired from the plugin.  The data is different between the two.
+		        var credsData = creds;
+		        if (creds.data)  // Event sets the `data` object with the auth data.
+		            credsData = creds.data;
+
+				logToConsole(JSON.stringify(credsData));
+		
+		        forcetkClient = new forcetk.Client(credsData.clientId, credsData.loginUrl, null,
+		        			cordova.require("salesforce/plugin/oauth").forcetkRefresh);
+		        forcetkClient.setSessionToken(credsData.accessToken, apiVersion, credsData.instanceUrl);
+		        forcetkClient.setRefreshToken(credsData.refreshToken);
+		        forcetkClient.setUserAgentString(credsData.userAgent);
+		        
+		        setupApp( creds.userId );
+		        
+		    }
+		
+		    function getAuthCredentialsError(error) {
+		        logToConsole("getAuthCredentialsError: " + error);
+		    }
+		    
+		</script>
+        
+		<!-- ここからアプリ独自のコード -->
+    	<script src="inline.js"></script>       
+    	
+	</head>
+
+    <body>
+		<div data-role="page" id="top" >
+			<div data-role="header">
+				<a href="#" id="top_header_setting" data-iconpos="notext" data-icon="gear"></a>
+				<h2>フォーム一覧</h2>
+				<a href="#" id="top_header_addform" data-icon="plus" >追加</a>
+			</div>
+			<div data-role="content" >
+				<ul data-role="listview" id="top_formlist">
+					<!--
+					<li ><a href="#" >フォーム1<span class="ui-li-count" >3</span></a></li>
+					<li ><a href="#" >フォーム2<span class="ui-li-count" >10</span></a></li>
+					-->
+				</ul>
+				<script id="top_formlistitem" type="text/template">
+					<a href="#" ><%- name %> </a>
+				</script>
+				
+				<div data-role="popup" id="top_password_popup"  data-theme="a"  data-history="false">
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<p >
+						アプリケーション用の<br/>
+						パスワードを設定します。<br/>
+						設定されたパスワードは<br/>
+						<br/>
+						&nbsp;&nbsp;<strong>アプリ起動時</strong><br/>
+						&nbsp;&nbsp;<strong>フォーム公開モード解除時</strong><br/>
+						<br/>
+						に必要となります。
+						</p>
+						<br/>
+						<input type="checkbox" name="top_password_check" id="top_password_check" />
+	    				<label for="top_password_check">パスワード有効</label>
+						<input type="password" name="top_password_input" id="top_password_input" value=""  maxlength=8 placeholder="8文字以内" autocomplete="off"/>
+						<p style="color:red;" id="top_password_inputerror">パスワードが未入力です</p>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="top_password_save_btn" data-role="button" data-theme="b">決定</a></div>
+							<div class="ui-block-b" ><a href="#" id="top_password_cancel_btn" data-role="button" data-theme="c">取消</a></div>
+						</div>
+					</div>
+				</div>
+				
+				<div data-role="popup" id="top_logout_popup"  data-theme="a"  data-history="false">
+				    <div data-role="header" data-theme="a" >
+                		<h2>確認</h2>
+            		</div>
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<p >
+						ログアウトすると<br/>
+						アプリ内に記録されている<br/>
+						フォームデータは<br/>
+						すべて削除されます。<br/>
+						<br/>
+						ログアウトしますか？<br/>
+						</p>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="top_logout_ok_btn" data-role="button" data-theme="b">決定</a></div>
+							<div class="ui-block-b" ><a href="#" id="top_logout_cancel_btn" data-role="button" data-theme="c">取消</a></div>
+						</div>
+					</div>
+				</div>
+				
+			</div>
+			
+			<div data-role="panel" id="top_settings_panel" data-position="left" data-display="overlay" data-theme="a">
+            	<p style="text-align:center;">アプリ設定</p>
+            	<p >ログインユーザID :</p>
+            	<p id="top_loginuserid" style="word-wrap: break-word; "></p>
+            	<br/>
+            	<ul data-role="listview" data-theme="a" data-split-theme="b">
+                	<li><a href="#" id="top_password_link" >パスワード設定</a></li>
+                	<li><a href="#" id="top_logout_link" >ログアウト</a></li>
+            	</ul>
+        	</div>
+		</div>
+
+		<div data-role="page" id="addForm">
+			<div data-role="header">
+				<a href="#" data-iconpos="notext" data-icon="back" id="addform_return_btn">return</a>
+				<h2>オブジェクト選択</h2>
+				<a href="#" data-iconpos="notext" data-icon="refresh" id="addform_refresh_btn">refresh</a>
+			</div>
+			<div data-role="content" >
+				<ul data-role="listview" id="addform_sobjectlist">
+					<!--
+					<li data-icon="false"><a href="#" >オブジェクト1</a></li>
+					<li data-icon="false"><a href="#" >オブジェクト2</a></li>
+					-->
+				</ul>
+				<script id="addform_sobjectitem" type="text/template">
+					<a href="#" data-rel="popup" data-transition="pop"><%- Label %> </a>
+				</script>
+				
+				<div data-role="popup" id="addform_formsetting" data-overlay-theme="a" data-theme="c" class="ui-corner-all"  data-history="false">
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<p >
+						以下の内容でフォームを<br/>
+						作成します。<br/>
+						フォーム名を入力して<br/>
+						「保存」ボタンを押してください。
+						</p>
+						<br/>
+						<h3>対象オブジェクト情報</h3>
+						<div class="ui-grid-a">
+	    					<div class="ui-block-a" style="height:38px"><p style="text-align: right;">ラベル名&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
+	    					<div class="ui-block-b" style="height:38px"><p id="addform_selectedsobject_label"  value=""></p></div>
+	    					<div class="ui-block-a" style="height:38px"><p style="text-align: right;">API参照名&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
+	    					<div class="ui-block-b" style="height:38px"><p id="addform_selectedsobject_name"  value=""></p></div>
+	    				</div>
+	    				<br/>
+						<input type="text" name="addform_formname_input" id="addform_formname_input" value="" placeholder="フォーム名" maxlength=80 />
+						<p style="color:red;" id="addform_formname_inputerror">フォーム名が未入力です</p>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="addform_save_btn" data-role="button" data-theme="b">決定</a></div>
+							<div class="ui-block-b" ><a href="#" id="addform_cancel_btn" data-role="button" data-theme="c">取消</a></div>
+						</div>
+						
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!--  フォーム画面 -->
+		<div data-role="page" id="mainform">
+			<div data-role="header" id="mainForm_header">
+				<a href="#" data-iconpos="notext" data-icon="gear" id="mainForm_settings_btn">settings</a>
+				<h2 id="mainForm_header_title"></h2>
+				<a href="#" data-iconpos="notext"  id="mainform_header_tofinish_btn" data-icon="arrow-r" ></a>
+        		<a href="#" data-iconpos="notext"  id="mainform_header_toinput_btn" data-icon="arrow-l" ></a>
+			</div>
+			<div data-role="content" id="mainForm_content" style="position:relative;">
+				<!-- フォーム入力部分 -->
+				<div id="mainForm_input" style="position:absolute; left:0px; top:0px; background-size:cover; ">
+	            </div>
+        		<div id="mainForm_finish" style="position:absolute; left:0px; top:0px; background-size:cover; ">
+            	</div>
+
+        		<div data-role="panel" id="mainForm_settings_panel" data-position="left" data-display="overlay" data-theme="a">
+            		<p style="text-align:center;">フォーム設定</p>
+            		<br/>
+            		<ul data-role="listview" data-theme="a" data-split-theme="b">
+                		<li data-icon="back"><a href="#" id="mainForm_top_link">トップへ</a></li>
+                		<li><a href="#" id="mainForm_openmode_link" >公開モード</a></li>
+                		<li><a href="#" id="mainForm_changetitle_link" >名称変更</a></li>
+                		<li><a href="#" id="mainForm_inputsetting_link" >入力画面設定</a></li>
+                		<li><a href="#" id="mainForm_finishsetting_link" >完了画面設定</a></li>
+                		<!-- 
+                		<li><a href="#" id="mainForm_data_link" >ローカルデータ</a></li>
+                		-->
+                		<li><a href="#" id="mainForm_delete_link" data-rel="popup" data-transition="pop">削除</a></li>
+                		<!-- 
+                		<li>
+                			<div class="ui-grid-a">
+	    						<div class="ui-block-a"><span style="vertical-align:middle;" >ネットワーク</span></div>
+	    						<div class="ui-block-b">
+	    							<select name="network" id="mainForm_network" data-role="slider" data-mini="true" data-theme="a">
+                        				<option value="off">Off</option>
+                        				<option value="on">On</option>
+                    				</select>
+	    						</div>
+	    					</div>
+                		</li>
+                		-->
+            		</ul>
+        		</div>
+
+                <div data-role="popup" id="mainForm_showheader_popup"  data-theme="a"  data-history="false">
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<br/>
+						<h3>パスワード確認</h3>
+						<br/>
+						<input type="password" name="mainForm_showheader_password_input" id="mainForm_showheader_password_input" value=""  maxlength=8  autocomplete="off"/>
+						<p style="color:red;" id="mainForm_showheader_password_inputerror">パスワードが違います</p>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="mainForm_showheader_password_ok_btn" data-role="button" data-theme="b">決定</a></div>
+							<div class="ui-block-b" ><a href="#" id="mainForm_showheader_password_cancel_btn" data-role="button" data-theme="c">取消</a></div>
+						</div>
+					</div>
+				</div>
+        
+                <div data-role="popup" id="mainForm_openmode_popup" data-theme="b" data-history="false">
+            		<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+                		<p>
+                		ヘッダを非表示にして<br/>
+                		フォームのみを表示させます。<br/>
+                		再度ヘッダを表示させる場合は<br/>
+                		<strong>「1秒間」画面をタップ</strong><br/>
+                		してください。<br/>
+                		</p>
+                		<br/>
+                		<a href="#" id="mainForm_openmode_buttons_ok_btn" data-role="button" data-theme="c">確認</a>
+            		</div>
+        		</div>
+        
+        		<div data-role="popup" id="mainForm_changetitle_popup" data-theme="b" data-history="false">
+            		<div data-role="header" data-theme="a" >
+                		<h2>名称変更</h2>
+            		</div>
+            		<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+                		<input type="text" name="mainForm_changetitle_nameinput" id="mainForm_changetitle_nameinput" value="" placeholder="フォーム名" maxlength=80 />
+						<p style="color:red;" id="mainForm_changetitle_nameinputerror">フォーム名が未入力です</p>
+                		<br/>
+                		<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="mainForm_changetitle_buttons_save_btn" data-role="button" data-theme="b">決定</a></div>
+							<div class="ui-block-b" ><a href="#" id="mainForm_changetitle_buttons_cancel_btn" data-role="button" data-theme="c">取消</a></div>
+						</div>
+            		</div>
+        		</div>
+        
+        		<div data-role="popup" id="mainForm_delete_popup" data-theme="b" data-history="false">
+            		<div data-role="header" data-theme="a" class="ui-corner-top">
+                		<h1>削除確認</h1>
+            		</div>
+            		<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+                		<p>
+                		フォームを削除しますか？
+                		</p>
+                		<!-- 
+                		<p>ローカルに登録されたデータが存在する場合</p>
+                		<p>それらのデータも削除されてしまいます。</p>
+                		-->
+                		<br/>
+                		<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="mainForm_delete_buttons_delete_btn" data-role="button" data-theme="b">削除</a></div>
+							<div class="ui-block-b" ><a href="#" id="mainForm_delete_buttons_cancel_btn" data-role="button" data-theme="c">取消</a></div>
+						</div>
+            		</div>
+        		</div>
+        		
+        		<div data-role="popup" id="mainForm_input_inputerror_popup" data-theme="b" data-history="false">
+					<div data-role="header" >
+                		<h1>入力エラー</h1>
+            		</div>
+					<div data-role="content" >
+						<p>
+						入力内容に誤りがあります。<br/>
+						内容を修正のうえ再送信してください。
+						</p>
+						<hr/>
+						<div class="ui-grid-a" id="mainForm_input_inputerror_popup_message" >
+						</div>
+						<script id="mainForm_input_inputerror_popup_message_temp" type="text/template" >
+							<div class="ui-block-a" ><p style="vertical-align: middle; "><%-Name %></p></div>
+		    				<div class="ui-block-b" ><p style="vertical-align: middle; "><%-Value %></p></div>
+						</script>
+						
+						<a href="#" id="mainForm_input_inputerror_popup_button" data-role="button" data-theme="a">閉じる</a>
+					</div>
+				</div>
+        		
+        		<div data-role="popup" id="mainForm_input_submiterror_popup" data-theme="b" data-history="false">
+					<div data-role="header" >
+                		<h1>保存エラー</h1>
+            		</div>
+					<div data-role="content" >
+						<p>
+						保存時にエラーが発生しました。<br/>
+						</p>
+						<hr/>
+						<p id="mainForm_input_submiterror_popup_message" ></p>
+						<br/>
+						<a href="#" id="mainForm_input_submiterror_popup_button" data-role="button" data-theme="a">閉じる</a>
+					</div>
+				</div>
+        		
+    		</div> <!-- content -->
+    		
+		</div>
+
+		<div data-role="page" id="inputsetting" >
+			<div data-role="header">
+				<a href="#" data-iconpos="notext" data-icon="back" id="inputsetting_header_backbtn">back</a>
+				<h2>入力画面設定</h2>
+				<a href="#" id="inputsetting_header_savebtn" data-icon="star" >保存</a>
+        	</div>
+
+			<div data-role="content" id="inputsetting_content" style="position:relative; ">
+				<div id="inputsetting_content_inner" style="position:absolute; background-size:cover; " >
+				</div>
+				
+				<div data-role="popup" id="inputsetting_itemsetting_popup" data-overlay-theme="a" data-theme="c" class="ui-corner-all" data-history="false">
+					
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<h4 style="text-align:center;">フォーム項目設定</h4>
+						<div id="inputsetting_itemsetting_input_div">
+							<div class="ui-grid-a">
+		    					<div class="ui-block-a" ><p  style="text-align: right; height:25px;">ラベル名&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
+		    					<div class="ui-block-b" ><p id="inputsetting_itemsetting_input_fieldlabel"  style="height:25px"></p></div>
+		    					<div class="ui-block-a" ><p  style="text-align: right; height:25px;">API参照名&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
+		    					<div class="ui-block-b" ><p id="inputsetting_itemsetting_input_fieldname" style="height:25px"></p></div>
+		    					<div class="ui-block-a" ><p  style="text-align: right; height:25px;">入力必須&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
+		    					<div class="ui-block-b" ><p id="inputsetting_itemsetting_input_fieldnillable" style="height:25px"></p></div>
+		    				</div>
+		    				<hr/>
+		    				<div id="inputsetting_itemsetting_input_text_div">
+		    					<!-- ラベル, 必須入力 , placeholder -->
+		    					<label for="inputsetting_itemsetting_input_text_label" >項目名</label>
+		    					<input type="text" name="inputsetting_itemsetting_input_text_label" id="inputsetting_itemsetting_input_text_label" value="" maxlength=80 />
+								<label for="inputsetting_itemsetting_input_text_placeholder" >ダミーテキスト</label>
+		    					<input type="text" name="inputsetting_itemsetting_input_text_placeholder" id="inputsetting_itemsetting_input_text_placeholder" value=""  maxlength=80 />
+		    					<input type="checkbox" name="inputsetting_itemsetting_input_text_require" id="inputsetting_itemsetting_input_text_require" />
+	    						<label for="inputsetting_itemsetting_input_text_require">必須入力</label>
+		    					<!--
+		    					<div class="ui-grid-a">
+		    						<div class="ui-block-a" ><div style="vertical-align:middle;" >必須入力</div></div>
+		    						<div class="ui-block-b" >
+			    					<fieldset data-role="controlgroup" data-type="horizontal" data-mini="true">
+	    								<input type="checkbox" name="inputsetting_itemsetting_input_text_require" id="inputsetting_itemsetting_input_text_require">
+	    								<label for="inputsetting_itemsetting_input_text_require">ON</label>
+									</fieldset>
+									</div>
+		    					</div>-->
+							</div>
+		    				<div id="inputsetting_itemsetting_input_textarea_div">
+		    					<!-- ラベル, 必須入力, 行数 -->
+		    					
+		    				</div>
+		    				<div id="inputsetting_itemsetting_input_picklist_div">
+		    					<!-- ラベル, 必須入力, 選択肢 -->
+		    					
+		    				</div>
+		    				<div id="inputsetting_itemsetting_input_multipicklist_div">
+		    					<!-- ラベル, 必須入力, 選択肢(複数) -->
+		    					
+		    				</div>
+	    				</div>
+	    				<div id="inputsetting_itemsetting_label_div">
+	    					<!-- ラベル(必須) , テキストカラー , 文字サイズ -->
+	    					<br/>
+	    					<label for="inputsetting_itemsetting_label_label" >表示ラベル</label>
+		    				<textarea  name="inputsetting_itemsetting_label_label" id="inputsetting_itemsetting_label_label" maxlength=250 cols=40 style="height:3em; max-height:5em;" ></textarea>
+							<p style="color:red;" id="inputsetting_itemsetting_label_label_inputerror">ラベルが未入力です</p>
+							<label for="inputsetting_itemsetting_label_color" >文字色</label>
+							<br/>
+							<input type="text" data-role="none" name="inputsetting_itemsetting_label_color" id="inputsetting_itemsetting_label_color" />
+							<label for="inputsetting_itemsetting_label_size" >文字サイズ</label>
+		    				<select name="inputsetting_itemsetting_label_size" id="inputsetting_itemsetting_label_size" data-mini="true">
+								<option value="1">小</option>
+								<option value="2">中</option>
+								<option value="3">大</option>
+							</select>
+						</div>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="inputsetting_itemsetting_buttons_save_btn" data-role="button" data-theme="b">&nbsp;&nbsp;決定&nbsp;&nbsp;</a></div>
+							<div class="ui-block-b" ><a href="#" id="inputsetting_itemsetting_buttons_cancel_btn" data-role="button" data-theme="c">&nbsp;&nbsp;取消&nbsp;&nbsp;</a></div>
+						</div>
+					</div>
+				</div> <!-- popup -->
+				
+				<div data-role="popup" id="inputsetting_itemdeleteconfirm_popup" data-overlay-theme="a" data-theme="c" class="ui-corner-all" data-history="false">
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<h4 style="text-align:center;">削除確認</h4>
+						<br/>
+						<p>
+						項目を削除しますか？<br/>
+						</p>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="inputsetting_itemdeleteconfirm_delete" data-role="button" data-theme="b">削除</a></div>
+							<div class="ui-block-b" ><a href="#" id="inputsetting_itemdeleteconfirm_cancel" data-role="button" data-theme="c">取消</a></div>
+						</div>
+					</div>
+				</div>
+				
+				<div data-role="popup" id="inputsetting_saveconfirm_popup" data-overlay-theme="a" data-theme="c" class="ui-corner-all" data-history="false">
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<h4 style="text-align:center;">保存確認</h4>
+						<br/>
+						<p>
+						設定中の内容で保存しますか？<br/>
+						(保存前の状態に戻すことはできません)
+						</p>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="inputsetting_saveconfirm_save" data-role="button" data-theme="b">保存</a></div>
+							<div class="ui-block-b" ><a href="#" id="inputsetting_saveconfirm_cancel" data-role="button" data-theme="c">取消</a></div>
+						</div>
+					</div>
+				</div>
+				<div data-role="popup" id="inputsetting_returnconfirm_popup" data-overlay-theme="a" data-theme="c" class="ui-corner-all" data-history="false">
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<h4 style="text-align:center;">確認</h4>
+						<br/>
+						<p>
+						フォーム画面に戻ると<br/>
+						設定中の内容は<br/>
+						破棄されます。<br/>
+						このまま戻りますか？
+						</p>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="inputsetting_returnconfirm_return" data-role="button" data-theme="b">&nbsp;&nbsp;戻る&nbsp;&nbsp;</a></div>
+							<div class="ui-block-b" ><a href="#" id="inputsetting_returnconfirm_cancel" data-role="button" data-theme="c">&nbsp;&nbsp;取消&nbsp;&nbsp;</a></div>
+						</div>
+						<a href="#" id="inputsetting_returnconfirm_save" data-role="button" data-theme="b">保存して戻る</a>
+						
+					</div>
+				</div>
+				
+    		</div> <!-- content -->
+		
+			<div data-role="footer" data-position="fixed" id="inputsetting_footer" data-tap-toggle="false">
+				<!-- 配置編集領域 -->
+				<div id="inputsetting_footer_position" style="width:70%; margin: 0 auto;">
+					<div class="ui-grid-c">
+	    				<div class="ui-block-a"><p style="vertical-align: middle; ">&nbsp;&nbsp;X座標</p></div>
+	    				<div class="ui-block-b"><input type="number" id="inputsetting_formitem_xpos"  value=""></div>
+	    				<div class="ui-block-c"><p style="vertical-align: middle; ">&nbsp;&nbsp;Y座標</p></div>
+	    				<div class="ui-block-d"><input type="number" id="inputsetting_formitem_ypos"  value=""></div>
+	    				<div class="ui-block-a"><p style="vertical-align: middle; ">&nbsp;&nbsp;幅</p></div>
+	    				<div class="ui-block-b"><input type="number" id="inputsetting_formitem_width" value=""></div>
+	    				<div class="ui-block-c"><p style="vertical-align: middle; ">&nbsp;&nbsp;高さ</p></div>
+	    				<div class="ui-block-d"><input type="number" id="inputsetting_formitem_height" value=""></div>
+	    			</div>
+	    			<a href="#" id="inputsetting_formitem_pos_btn" data-role="button" data-theme="b" >反映</a>
+	    			<input type="checkbox" name="inputsetting_footer_position_center_check" id="inputsetting_footer_position_center_check" />
+	    			<label for="inputsetting_footer_position_center_check">中央揃え</label>
+				</div>
+				<!-- 項目編集領域 -->
+				<div id="inputsetting_footer_setting" style="width:70%; margin: 0 auto;">
+					<div style="text-align:center;">
+						<p>
+						操作したい項目を<br/>
+						タッチしてください
+						</p>
+						<fieldset data-role="controlgroup" data-type="horizontal" id="inputsetting_footer_setting_radio_group">
+	    					<input type="radio" name="inputsetting_footer_setting_radio" id="inputsetting_footer_setting_edit_radio" value="edit">
+	        				<label for="inputsetting_footer_setting_edit_radio">編集</label>
+	        				<input type="radio" name="inputsetting_footer_setting_radio" id="inputsetting_footer_setting_delete_radio" value="delete">
+	        				<label for="inputsetting_footer_setting_delete_radio">削除</label>
+	        			</fieldset>
+        			</div>
+				</div>
+				<!-- 項目追加領域 -->
+				<div id="inputsetting_footer_additem" style="width:70%; margin: 0 auto;">
+					<p style="text-align:center;">項目選択</p>
+					<select name="inputsetting_footer_additem_field_select" id="inputsetting_footer_additem_field_select">
+					</select>
+					<a href="#" id="inputsetting_footer_additem_field_btn" data-role="button" data-theme="b" >項目追加</a>
+					<br/>
+					<a href="#" id="inputsetting_footer_additem_label_btn" data-role="button" data-theme="b" >ラベル追加</a>
+				</div>
+				<!-- 背景編集領域 -->
+				<div id="inputsetting_footer_background" style="width:70%; margin: 0 auto;">
+					<div class="ui-grid-a">
+						<div class="ui-block-a" style="height:60px"><p style="vertical-align: middle; text-align:right;">背景色</p></div>
+						<div class="ui-block-b" style="height:60px">
+							<p style="text-align:center;">
+							<input type="text" data-role="none" id="inputsetting_footer_background_bgcolor" />
+							</p>
+						</div>
+						<div class="ui-block-a" style="height:60px"><p style="vertical-align: middle; text-align:right;">画像利用</p></div>
+						<div class="ui-block-b" style="height:60px">
+							<fieldset id="inputsetting_footer_background_bgfile_check_group" data-role="controlgroup" data-type="horizontal" style="text-align:center;">
+								<input type="checkbox" name="inputsetting_footer_background_bgfile_check" id="inputsetting_footer_background_bgfile_check" />
+								<label for="inputsetting_footer_background_bgfile_check"></label>
+							</fieldset>
+						</div>
+					</div>
+					<input type="button" id="inputsetting_footer_background_bgfile_select" value="画像選択" />
+					<br/>
+				</div>
+				 <div data-role="navbar" id="inputsetting_footer_navi">
+        			<ul>
+			            <li><a href="#" id="inputsetting_footer_navi_position" class="footer_navi">配置設定</a></li>
+			            <li><a href="#" id="inputsetting_footer_navi_setting" class="footer_navi">項目設定</a></li>
+			            <li><a href="#" id="inputsetting_footer_navi_additem" class="footer_navi">項目追加</a></li>
+			            <li><a href="#" id="inputsetting_footer_navi_background" class="footer_navi">背景設定</a></li>
+			        </ul>
+    			</div>
+			</div>
+		
+		</div>
+
+		<div data-role="page" id="finishsetting" >
+			<div data-role="header">
+				<a href="#" data-iconpos="notext" data-icon="back" id="finishsetting_header_backbtn">back</a>
+				<h2>完了画面設定</h2>
+				<a href="#" id="finishsetting_header_savebtn" data-icon="star" >保存</a>
+        	</div>
+
+			<div data-role="content" id="finishsetting_content" style="position:relative; ">
+				<div id="finishsetting_content_inner" style="position:absolute; background-size:cover; " >
+				</div>
+				
+				<div data-role="popup" id="finishsetting_itemsetting_popup" data-overlay-theme="a" data-theme="c" class="ui-corner-all" data-history="false">
+					
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<h4 style="text-align:center;">フォーム項目設定</h4>
+	    				<!-- ラベル(必須) , テキストカラー , 文字サイズ -->
+	    				<br/>
+	    				<label for="finishsetting_itemsetting_label_label" >表示ラベル</label>
+		    			<textarea  name="finishsetting_itemsetting_label_label" id="finishsetting_itemsetting_label_label" maxlength=250 cols=40 style="height:3em; max-height:5em;" ></textarea>
+						<p style="color:red;" id="finishsetting_itemsetting_label_label_inputerror">ラベルが未入力です</p>
+						<label for="finishsetting_itemsetting_label_color" >文字色</label>
+						<br/>
+						<input type="text" data-role="none" name="finishsetting_itemsetting_label_color" id="finishsetting_itemsetting_label_color" />
+						<label for="finishsetting_itemsetting_label_size" >文字サイズ</label>
+		    			<select name="finishsetting_itemsetting_label_size" id="finishsetting_itemsetting_label_size" data-mini="true">
+							<option value="1">小</option>
+							<option value="2">中</option>
+							<option value="3">大</option>
+						</select>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="finishsetting_itemsetting_buttons_save_btn" data-role="button" data-theme="b">&nbsp;&nbsp;決定&nbsp;&nbsp;</a></div>
+							<div class="ui-block-b" ><a href="#" id="finishsetting_itemsetting_buttons_cancel_btn" data-role="button" data-theme="c">&nbsp;&nbsp;取消&nbsp;&nbsp;</a></div>
+						</div>
+					</div>
+				</div> <!-- popup -->
+				
+				<div data-role="popup" id="finishsetting_itemdeleteconfirm_popup" data-overlay-theme="a" data-theme="c" class="ui-corner-all" data-history="false">
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<h4 style="text-align:center;">削除確認</h4>
+						<br/>
+						<p>
+						項目を削除しますか？<br/>
+						</p>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="finishsetting_itemdeleteconfirm_delete" data-role="button" data-theme="b">削除</a></div>
+							<div class="ui-block-b" ><a href="#" id="finishsetting_itemdeleteconfirm_cancel" data-role="button" data-theme="c">取消</a></div>
+						</div>
+					</div>
+				</div>
+				
+				<div data-role="popup" id="finishsetting_saveconfirm_popup" data-overlay-theme="a" data-theme="c" class="ui-corner-all" data-history="false">
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<h4 style="text-align:center;">保存確認</h4>
+						<br/>
+						<p>
+						設定中の内容で保存しますか？<br/>
+						(保存前の状態に戻すことはできません)
+						</p>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="finishsetting_saveconfirm_save" data-role="button" data-theme="b">保存</a></div>
+							<div class="ui-block-b" ><a href="#" id="finishsetting_saveconfirm_cancel" data-role="button" data-theme="c">取消</a></div>
+						</div>
+					</div>
+				</div>
+				
+				<div data-role="popup" id="finishsetting_returnconfirm_popup" data-overlay-theme="a" data-theme="c" class="ui-corner-all" data-history="false">
+					<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+						<h4 style="text-align:center;">確認</h4>
+						<br/>
+						<p>
+						フォーム画面に戻ると<br/>
+						設定中の内容は<br/>
+						破棄されます。<br/>
+						このまま戻りますか？
+						</p>
+						<div class="ui-grid-a">
+							<div class="ui-block-a" ><a href="#" id="finishsetting_returnconfirm_return" data-role="button" data-theme="b">&nbsp;&nbsp;戻る&nbsp;&nbsp;</a></div>
+							<div class="ui-block-b" ><a href="#" id="finishsetting_returnconfirm_cancel" data-role="button" data-theme="c">&nbsp;&nbsp;取消&nbsp;&nbsp;</a></div>
+						</div>
+						<a href="#" id="finishsetting_returnconfirm_save" data-role="button" data-theme="b">保存して戻る</a>
+						
+					</div>
+				</div>
+				
+    		</div> <!-- content -->
+		
+			<div data-role="footer" data-position="fixed" id="finishsetting_footer" data-tap-toggle="false">
+				<!-- 配置編集領域 -->
+				<div id="finishsetting_footer_position" style="width:70%; margin: 0 auto;">
+					<div class="ui-grid-c">
+	    				<div class="ui-block-a"><p style="vertical-align: middle; ">&nbsp;&nbsp;X座標</p></div>
+	    				<div class="ui-block-b"><input type="number" id="finishsetting_formitem_xpos"  value=""></div>
+	    				<div class="ui-block-c"><p style="vertical-align: middle; ">&nbsp;&nbsp;Y座標</p></div>
+	    				<div class="ui-block-d"><input type="number" id="finishsetting_formitem_ypos"  value=""></div>
+	    				<div class="ui-block-a"><p style="vertical-align: middle; ">&nbsp;&nbsp;幅</p></div>
+	    				<div class="ui-block-b"><input type="number" id="finishsetting_formitem_width" value=""></div>
+	    				<div class="ui-block-c"><p style="vertical-align: middle; ">&nbsp;&nbsp;高さ</p></div>
+	    				<div class="ui-block-d"><input type="number" id="finishsetting_formitem_height" value=""></div>
+	    			</div>
+	    			<a href="#" id="finishsetting_formitem_pos_btn" data-role="button" data-theme="b" >反映</a>
+	    			<input type="checkbox" name="finishsetting_footer_position_center_check" id="finishsetting_footer_position_center_check" />
+	    			<label for="finishsetting_footer_position_center_check">中央揃え</label>
+				</div>
+				<!-- 項目編集領域 -->
+				<div id="finishsetting_footer_setting" style="width:70%; margin: 0 auto;">
+					<div style="text-align:center;">
+						<p>
+						操作したい項目を<br/>
+						タッチしてください
+						</p>
+						<fieldset data-role="controlgroup" data-type="horizontal" id="finishsetting_footer_setting_radio_group">
+	    					<input type="radio" name="finishsetting_footer_setting_radio" id="finishsetting_footer_setting_edit_radio" value="edit">
+	        				<label for="finishsetting_footer_setting_edit_radio">編集</label>
+	        				<input type="radio" name="finishsetting_footer_setting_radio" id="finishsetting_footer_setting_delete_radio" value="delete">
+	        				<label for="finishsetting_footer_setting_delete_radio">削除</label>
+	        			</fieldset>
+        			</div>
+				</div>
+				<!-- 項目追加領域 -->
+				<div id="finishsetting_footer_additem" style="width:70%; margin: 0 auto;">
+					<p style="text-align:center;">項目追加</p>
+					<a href="#" id="finishsetting_footer_additem_label_btn" data-role="button" data-theme="b" >ラベル追加</a>
+				</div>
+				<!-- 背景編集領域 -->
+				<div id="finishsetting_footer_background" style="width:70%; margin: 0 auto;">
+					<div class="ui-grid-a">
+						<div class="ui-block-a" style="height:60px"><p style="vertical-align: middle; text-align:right;">背景色</p></div>
+						<div class="ui-block-b" style="height:60px">
+							<p style="text-align:center;">
+							<input type="text" data-role="none" id="finishsetting_footer_background_bgcolor" />
+							</p>
+						</div>
+						<div class="ui-block-a" style="height:60px"><p style="vertical-align: middle; text-align:right;">画像利用</p></div>
+						<div class="ui-block-b" style="height:60px">
+							<fieldset id="finishsetting_footer_background_bgfile_check_group" data-role="controlgroup" data-type="horizontal" style="text-align:center;">
+								<input type="checkbox" name="finishsetting_footer_background_bgfile_check" id="finishsetting_footer_background_bgfile_check" />
+								<label for="finishsetting_footer_background_bgfile_check"></label>
+							</fieldset>
+						</div>
+					</div>
+					<input type="button" id="finishsetting_footer_background_bgfile_select" value="画像選択" />
+					<br/>
+				</div>
+				 <div data-role="navbar" id="finishsetting_footer_navi">
+        			<ul>
+			            <li><a href="#" id="finishsetting_footer_navi_position" class="footer_navi">配置設定</a></li>
+			            <li><a href="#" id="finishsetting_footer_navi_setting" class="footer_navi">項目設定</a></li>
+			            <li><a href="#" id="finishsetting_footer_navi_additem" class="footer_navi">項目追加</a></li>
+			            <li><a href="#" id="finishsetting_footer_navi_background" class="footer_navi">背景設定</a></li>
+			        </ul>
+    			</div>
+			</div>
+		
+		</div>
+
+
+		<!-- 
+		<div data-role="page" id="page_localdata">
+    		<div data-role="header">
+        		<a href="#mainform" data-iconpos="notext" data-icon="back" id="settings_btn">settings</a>
+        		<h2>ローカルデータ</h2>
+    		</div>
+    
+    		<div data-role="content" >
+        		<a href="#" data-role="button" data-mini="true" data-inline="true" data-icon="check" data-theme="b">すべてチェック</a>
+        		<a href="#" data-role="button" data-mini="true" data-inline="true" data-icon="arrow-u" data-theme="a">アップロード</a>
+        		<table data-role="table" id="table-column-toggle" data-mode="columntoggle" class="ui-responsive table-stroke">
+            		<thead>
+                		<tr>
+		                    <th width="50">選択</th>
+		                    <th width="50">状態</th>
+		                    <th data-priority="1">名前</th>
+		                    <th data-priority="2">メールアドレス</th>
+                		</tr>
+            		</thead>
+            		<tbody>
+                		<tr>
+                    		<td>
+                        		<fieldset data-role="controlgroup" data-type="horizontal" data-mini="true">
+                            	<label for="checkbox-mini-0">＋</label>
+                            	<input type="checkbox" name="checkbox-0" id="checkbox-mini-0" class="custom"/>
+                        		</fieldset>
+                    		</td>
+                    		<td><a href="#formErrorDetail" data-rel="popup" data-transition="pop" >
+                        		<img src="./image/icon_warning.png" alt="Fail" class="ui-li-icon ui-corner-none" />
+                    			</a>
+                    		</td>
+                    		<td>リードA</td>
+                    		<td>test@test.com</td>
+                		</tr>
+                		<tr>
+                    		<td>
+                        		<fieldset data-role="controlgroup" data-type="horizontal" data-mini="true">
+                            	<label for="checkbox-mini-0">＋</label>
+                            	<input type="checkbox" name="checkbox-0" id="checkbox-mini-0" class="custom"/>
+                        		</fieldset>
+                    		</td>
+                    		<td></td>
+                    		<td>リードB</td>
+                    		<td>test@test.com</td>
+                		</tr>
+                		<tr>
+                    		<td>
+                        		<fieldset data-role="controlgroup" data-type="horizontal" data-mini="true">
+                            	<label for="checkbox-mini-0">＋</label>
+                            	<input type="checkbox" name="checkbox-0" id="checkbox-mini-0" class="custom"/>
+                        		</fieldset>
+                    		</td>
+                    		<td><img src="image/icon_warning.png" alt="Fail" class="ui-li-icon ui-corner-none" /></td>
+                    		<td>リードC</td>
+                    		<td>test3@test.com</td>
+                		</tr>
+            		</tbody>
+        		</table>
+       
+        		<div data-role="popup" id="formErrorDetail" data-overlay-theme="a" data-theme="c" class="ui-corner-all">
+            		<div data-role="header" data-theme="a" class="ui-corner-top">
+                		<a href="#" data-iconpos="notext" data-icon="delete" data-rel="back" >close</a>
+                		<h1>エラー原因</h1>
+            		</div>
+            		<div data-role="content" data-theme="d" class="ui-corner-bottom ui-content">
+                		<h3 class="ui-title">アップロードエラーの詳細</h3>
+                		<p><br/><br/></p>
+                		<ul data-role="listview">
+                    		<li>必須項目が未指定</li>
+                    		<li>メールアドレスが不正</li>
+                		</ul>
+            		</div>
+        		</div>
+    		</div>
+		</div>-->
+
+	<script id="input_formitem_mailaddress" type="text/template">
+		<label for="<%- localId %>"><%- Label %></label>
+		<input type="email" name="<%- localId %>" id="<%- localId %>" placeholder="<%- Placeholder %>" data-clear-btn="false" />
+	</script>
+	<script id="input_formitem_string" type="text/template">
+		<label for="<%- localId %>"><%- Label %></label>
+		<input type="text" name="<%- localId %>" id="<%- localId %>" placeholder="<%- Placeholder %>" data-clear-btn="false" />
+	</script>
+	<script id="input_formitem_textarea" type="text/template">
+		<label for="<%- localId %>"　><%- Label %></label>
+		<textarea cols="20" rows="3" name="<%- localId %>" id="<%- localId %>"></textarea>
+	</script>
+	<script id="input_formitem_integer" type="text/template">
+		<label for="<%- localId %>"><%- Label %></label>
+		<input type="number" name="<%- localId %>" id="<%- localId %>" patter="^¥-?([1-9]\d*|0)$" data-clear-btn="false" />
+	</script>
+	<script id="input_formitem_double" type="text/template">
+		<label for="<%- localId %>"><%- Label %></label>
+		<input type="number" name="<%- localId %>" id="<%- localId %>" patter="^¥-?([1-9]\d*|0)(\.\d+)?$" data-clear-btn="false" />
+	</script>
+	<script id="input_formitem_phone" type="text/template">
+		<label for="<%- localId %>"><%- Label %></label>
+		<input type="tel" name="<%- localId %>" id="<%- localId %>" data-clear-btn="false" />
+	</script>
+	<script id="input_formitem_url" type="text/template">
+		<label for="<%- localId %>"><%- Label %></label>
+		<input type="url" name="<%- localId %>" id="<%- localId %>" data-clear-btn="false" />
+	</script>
+	<script id="input_formitem_date" type="text/template">
+		<label for="<%- localId %>"><%- Label %></label>
+		<input type="date" name="<%- localId %>" id="<%- localId %>" data-clear-btn="false" />
+	</script>
+	<script id="input_formitem_datetime" type="text/template">
+		<label for="<%- localId %>"><%- Label %></label>
+		<input type="datetime-local" name="<%- localId %>" id="<%- localId %>"  data-clear-btn="false" />
+	</script>
+	<script id="input_formitem_picklistradio" type="text/template">
+		<fieldset data-role="controlgroup">
+		<legend><%- Label %></legend>
+			<% _.each(SelectValues, function(item , i) { %>
+				<input type="radio" name="<%- localId %>" id="<%- localId %>-<%= i %>" value="<%- item %>" 
+				<% if(i == 0) { %> 
+					checked="checked"
+				<% }%> 
+			>
+			<label for="<%- localId %>-<%= i %>"><%- item %></label>
+			<% }); %>
+		</fieldset>
+	</script>
+	<script id="input_formitem_picklist" type="text/template">
+		<label for="<%- localId %>"><%- Label %></label>
+		<select name="<%- localId %>" id="<%- localId %>">
+			<% _.each(SelectValues, function(item , i) { %>
+				<option value="select_<%- i%>"><%- item %></option>
+			<% }); %>
+		</select>
+	</script>
+	<script id="input_formitem_multipicklist" type="text/template">
+		<label for="<%- localId %>" class="select" ><%- Label %></label>
+		<select name="<%- localId %>" id="<%- localId %>" multiple="multiple" data-native-menu="false">
+			<optgroup label="<%- Label %>">
+				<% _.each(SelectValues, function(item , i) { %>
+					<option value="select_<%- i%>"><%- item %></option>
+				<% }); %>
+			</optgroup>
+		</select>
+	</script>
+
+	<script id="label_formitem_text" type="text/template">
+		<pre class="formlabel" style="color:#<%- TextColor %>"><%- Label %></pre>
+	</script>
+	<script id="button_formitem_submit" type="text/template">
+		<a href="#" data-role="button"  data-theme="b"  ><%- Label %></a>
+	</script>
+
+	</body>
+
+</html>
